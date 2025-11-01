@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>뽀송이 세탁소 지도</title>
+    <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=bb0c3fb1577a5c90389922daee14b32c&libraries=services"></script>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            font-family: "Apple SD Gothic Neo", sans-serif;
+            background: #eef2ff;
+        }
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+        #card {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #fff;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            line-height: 1.6;
+            animation: slideUp .3s ease;
+            z-index: 10;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        #card h3 { margin: 0; font-size: 18px; }
+        #card p { margin: 6px 0; color: #555; }
+        #card a { color: #2563eb; text-decoration: none; }
+        #searchBox {
+            position: fixed;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            background: #fff;
+            border-radius: 16px;
+            padding: 8px 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            z-index: 5;
+        }
+        #keyword {
+            border: none;
+            outline: none;
+            font-size: 15px;
+            width: 180px;
+        }
+        button {
+            background: #3B82F6;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div id="searchBox">
+    <input id="keyword" type="text" placeholder="세탁소 검색..." />
+    <button id="searchBtn">검색</button>
+</div>
+
+<div id="map"></div>
+
+<div id="card">
+    <h3 id="placeName"></h3>
+    <p id="address"></p>
+    <p id="phone"></p>
+    <p><a id="link" href="#" target="_blank">카카오맵에서 보기</a></p>
+</div>
+
+<script>
+    const mapContainer = document.getElementById('map');
+    const map = new kakao.maps.Map(mapContainer, {
+        center: new kakao.maps.LatLng(37.5665, 126.9780),
+        level: 4
+    });
+
+    let markers = [];
+
+    function showCard(place) {
+        document.getElementById('placeName').textContent = place.place_name;
+        document.getElementById('address').textContent = place.road_address_name || place.address_name;
+        document.getElementById('phone').textContent = place.phone ? `📞 ${place.phone}` : "전화번호 없음";
+        document.getElementById('link').href = place.place_url;
+        document.getElementById('card').style.display = 'block';
+    }
+
+    function clearMarkers() {
+        markers.forEach(m => m.setMap(null));
+        markers = [];
+    }
+
+    function searchNearby(keyword, lat, lon) {
+        fetch(`http://localhost:8080/api/places/search?query=${encodeURIComponent(keyword)}&x=${lon}&y=${lat}&radius=1500`)
+            .then(res => res.text())           // ✅ 서버가 JSON 문자열을 반환하므로 text로 읽기
+            .then(text => {
+                const data = JSON.parse(text);   // ✅ 직접 파싱
+                clearMarkers();
+                data.documents.forEach(place => {
+                    const marker = new kakao.maps.Marker({
+                        map: map,
+                        position: new kakao.maps.LatLng(place.y, place.x)
+                    });
+                    markers.push(marker);
+                    kakao.maps.event.addListener(marker, 'click', () => {
+                        console.log("클릭됨:", place.place_name);
+                        showCard(place);
+                    });
+                });
+                if (data.documents.length > 0) {
+                    map.setCenter(new kakao.maps.LatLng(data.documents[0].y, data.documents[0].x));
+                }
+            })
+            .catch(err => {
+                console.error("❌ 서버 연결 실패:", err);
+                alert("서버 또는 CORS 설정을 확인해주세요.");
+            });
+    }
+
+    function loadMyLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                map.setCenter(new kakao.maps.LatLng(lat, lon));
+                searchNearby("세탁소", lat, lon);
+            }, () => {
+                alert("위치 접근이 차단되었습니다. 기본 위치(서울 시청)로 표시합니다.");
+                searchNearby("세탁소", 37.5665, 126.9780);
+            });
+        } else {
+            alert("이 브라우저에서는 위치 정보를 사용할 수 없습니다.");
+        }
+    }
+
+    document.getElementById('searchBtn').addEventListener('click', () => {
+        const keyword = document.getElementById('keyword').value.trim() || "세탁소";
+        navigator.geolocation.getCurrentPosition(pos => {
+            searchNearby(keyword, pos.coords.latitude, pos.coords.longitude);
+        });
+    });
+    // 초기 지도 로딩
+    loadMyLocation();
+</script>
+</body>
+</html>

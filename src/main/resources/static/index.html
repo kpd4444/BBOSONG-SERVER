@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <title>뽀송이 — 분석 결과 테스트</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <style>
+        :root{
+            --primary:#3B82F6; /* 파란 버튼 */
+            --text:#111827;    /* 거의 검정 */
+            --muted:#6B7280;   /* 회색 텍스트 */
+            --line:#E5E7EB;    /* 연한 경계선 */
+            --chip:#EEF2FF;    /* 옅은 파랑 */
+            --bg:#F8FAFC;      /* 배경 */
+            --card:#FFFFFF;    /* 카드 배경 */
+            --radius:18px;
+        }
+        html,body{margin:0;padding:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Malgun Gothic,sans-serif;color:var(--text);}
+        .phone {
+            width: 390px; margin: 24px auto; background: #0000; position: relative;
+        }
+        .card {
+            background: var(--card); border-radius: 28px; box-shadow: 0 10px 30px rgba(0,0,0,.08);
+            overflow: hidden; border: 1px solid #F1F5F9;
+        }
+        header {
+            display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--line);
+            font-weight:600;
+        }
+        .title-sub {color:#5B7FFF;font-size:12px;font-weight:600;margin-bottom:6px}
+        .title-main {font-size:20px;font-weight:800;line-height:1.2;margin:0 0 8px}
+        .img-wrap {background:#F3F4F6;border-radius:22px;padding:14px; display:flex; justify-content:center; align-items:center; height:210px; border:1px solid #EEF2F7;}
+        .img-wrap img {max-height:100%; max-width:100%; border-radius:14px; object-fit:contain;}
+        .rows {margin-top:14px;border-top:1px solid var(--line)}
+        .row {display:flex; gap:14px; padding:12px 2px; border-bottom:1px solid var(--line); font-size:14px}
+        .row b {color:#2563EB; min-width:80px}
+        .row .val {white-space:pre-wrap; color:#111827}
+        .hint {color:var(--muted); font-size:12px}
+        .actions {display:flex; gap:10px; padding:16px}
+        .btn {
+            flex:1; padding:13px 14px; border-radius:14px; border:1px solid var(--line); background:#F3F4F6; color:var(--muted); font-weight:700;
+        }
+        .btn.primary {background:var(--primary); color:#fff; border-color:var(--primary)}
+        .uploader {padding:14px 16px; display:flex; gap:10px; align-items:center}
+        .filebox input[type="file"]{display:none}
+        .filebox label{padding:10px 12px;border:1px dashed var(--line);border-radius:12px;background:#fff;cursor:pointer;font-size:13px}
+        .status {padding:0 16px 12px; font-size:13px; color:var(--muted)}
+        .badge {background:var(--chip); color:#4155D1; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:700; display:inline-block}
+    </style>
+</head>
+<body>
+<div class="phone">
+    <div class="card" id="app">
+        <header>
+            <button id="back" aria-label="back" style="background:none;border:0;font-size:18px;color:#6B7280">‹</button>
+            <div>분석 결과</div>
+            <div style="width:18px"></div>
+        </header>
+
+        <!-- 업로드 영역 -->
+        <div class="uploader">
+            <div class="filebox">
+                <input type="file" id="file" accept="image/*" />
+                <label for="file">사진 선택</label>
+            </div>
+            <button class="btn primary" id="analyzeBtn">분석하기</button>
+            <span class="badge" id="fakeBtn" title="서버 없이 데모">데모</span>
+        </div>
+        <div class="status" id="status">옷 사진을 선택하고 “분석하기”를 눌러주세요.</div>
+
+        <!-- 결과 카드 본문 -->
+        <div style="padding: 0 16px 16px">
+            <div class="title-sub">의류 / 니트</div>
+            <div class="title-main" id="title">폴로 코튼 케이블 니트</div>
+
+            <div class="img-wrap"><img id="preview" alt="preview" /></div>
+
+            <div class="rows" id="rows">
+                <div class="row"><b>소재</b><div class="val" id="mat">-</div></div>
+                <div class="row"><b>색상</b><div class="val" id="col">-</div></div>
+                <div class="row"><b>세탁 방법</b><div class="val" id="wash">-</div></div>
+                <div class="row"><b>주의사항</b><div class="val" id="caution">-</div></div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn" id="resetBtn">다시 검색하기</button>
+            <button class="btn primary" id="saveBtn">결과 저장하기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const $ = (sel)=>document.querySelector(sel);
+    const fileEl = $('#file');
+    const previewEl = $('#preview');
+    const statusEl = $('#status');
+    const analyzeBtn = $('#analyzeBtn');
+    const resetBtn = $('#resetBtn');
+    const saveBtn = $('#saveBtn');
+    const fakeBtn = $('#fakeBtn');
+
+    let currentResult = null;
+
+    // 미리보기
+    fileEl.addEventListener('change', () => {
+        const f = fileEl.files?.[0];
+        if (!f) return;
+        const url = URL.createObjectURL(f);
+        previewEl.src = url;
+        statusEl.textContent = `선택됨: ${f.name} (${Math.round(f.size/1024)}KB)`;
+        currentResult = null;
+        setFields();
+    });
+
+    // 분석하기
+    analyzeBtn.addEventListener('click', async () => {
+        const f = fileEl.files?.[0];
+        if (!f) { alert('사진을 선택해주세요.'); return; }
+        statusEl.textContent = '분석 중… 잠시만요.';
+        analyzeBtn.disabled = true;
+
+        try {
+            const fd = new FormData();
+            fd.append('file', f);
+            const res = await fetch('http://localhost:8080/api/analyze/image', { method:'POST', body: fd });
+            if(!res.ok) throw new Error(`HTTP ${res.status}`);
+            currentResult = await res.json();
+            setFields(currentResult);
+            statusEl.textContent = '분석 완료!';
+        } catch (e) {
+            console.error(e);
+            statusEl.textContent = '분석 실패… 서버가 실행 중인지 확인하세요.';
+            // 필요시: alert(e.message);
+        } finally {
+            analyzeBtn.disabled = false;
+        }
+    });
+
+    // 서버 없이 데모용 (모형 응답)
+    fakeBtn.addEventListener('click', () => {
+        if (!previewEl.src) previewEl.src = 'https://picsum.photos/seed/knit/500/400';
+        currentResult = {
+            "소재": "피마코튼",
+            "색상": "차콜 그레이",
+            "세탁방법": "드라이클리닝 권장 · 30°C 이하 중성세제 · 니트/울 코스 · 건조기 금지",
+            "주의사항": "뒤집어 세탁망 사용, 평평하게 그늘 건조 · 저온 다림질",
+            "권장심볼": ["DoNotBleach","DoNotTumbleDry","DryFlat","IronLow"]
+        };
+        setFields(currentResult);
+        statusEl.textContent = '데모 데이터 로드 완료!';
+    });
+
+    // 다시 검색
+    resetBtn.addEventListener('click', () => {
+        fileEl.value = '';
+        previewEl.removeAttribute('src');
+        currentResult = null;
+        setFields();
+        statusEl.textContent = '옷 사진을 선택하고 “분석하기”를 눌러주세요.';
+    });
+
+    // 저장 (임시: 로컬 다운로드)
+    saveBtn.addEventListener('click', () => {
+        if (!currentResult) { alert('분석 결과가 없습니다.'); return; }
+        const blob = new Blob([JSON.stringify(currentResult, null, 2)], {type:'application/json'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `posongi-result-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    });
+
+    function setFields(res){
+        $('#mat').textContent = res?.['소재'] ?? '-';
+        $('#col').textContent = res?.['색상'] ?? '-';
+        $('#wash').textContent = res?.['세탁방법'] ?? '-';
+        $('#caution').textContent = res?.['주의사항'] ?? '-';
+    }
+</script>
+</body>
+</html>
