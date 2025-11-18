@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>마이페이지</title>
+    <style>
+        body {
+            font-family: Pretendard, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        .mypage-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 30px;
+        }
+
+        .info-card {
+            border: 1px solid #e3e3e3;
+            border-radius: 14px;
+            padding: 20px;
+            background: #fafafa;
+        }
+
+        .info-row {
+            margin-bottom: 18px;
+        }
+
+        .info-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #777;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            margin-top: 4px;
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            font-size: 15px;
+            border-radius: 8px;
+            border: 1px solid #d0d0d0;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 20px;
+            padding: 12px;
+            background: #4b6aff;
+            border: none;
+            color: #fff;
+            font-size: 16px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #3954d7;
+        }
+
+        .btn-back {
+            margin-top: 15px;
+            text-align: center;
+            display: block;
+            color: #3d6aff;
+            font-size: 14px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="mypage-title">마이페이지</div>
+
+    <div class="info-card">
+
+        <div class="info-row">
+            <div class="info-label">아이디</div>
+            <div class="info-value" id="loginId">불러오는 중...</div>
+        </div>
+
+        <div class="info-row">
+            <div class="info-label">이름</div>
+            <input id="nameInput" placeholder="이름 입력">
+        </div>
+
+        <div class="info-row">
+            <div class="info-label">이메일</div>
+            <input id="emailInput" placeholder="이메일 입력">
+        </div>
+
+        <div class="info-row">
+            <div class="info-label">생년월일</div>
+            <input id="birthInput" type="date">
+        </div>
+
+    </div>
+
+    <button onclick="updateMyPage()">수정하기</button>
+    <a class="btn-back" href="/index.html">← 돌아가기</a>
+</div>
+
+<script>
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+        alert("로그인이 필요합니다.");
+        window.location.href = "/login.html";
+    }
+
+    // ⭐ 1) 마이페이지 정보 불러오기
+    fetch("/member/mypage", {
+        method: "GET",
+        headers: {
+            "Authorization": "Bearer " + token
+        }
+    })
+        .then(res => res.json())
+        .then(result => {
+            const data = result.data;
+
+            document.getElementById("loginId").textContent = data.loginId;
+            document.getElementById("nameInput").value = data.name;
+            document.getElementById("emailInput").value = data.email;
+            document.getElementById("birthInput").value = data.birth ? data.birth : "";
+        })
+        .catch(err => {
+            alert("정보를 불러올 수 없습니다.");
+            console.log(err);
+        });
+
+    // ⭐ 2) 수정하기 기능
+    function updateMyPage() {
+
+        const updateData = {
+            name: document.getElementById("nameInput").value,
+            email: document.getElementById("emailInput").value,
+            birth: document.getElementById("birthInput").value
+        };
+
+        fetch("/member/mypage", {
+            method: "PATCH",
+            headers: {
+                "Authorization": "Bearer " + token,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(updateData)
+        })
+            .then(res => res.json())
+            .then(result => {
+                alert("정보가 수정되었습니다!");
+
+                // 수정 후 화면 값을 최신화
+                const data = result.data;  // 수정된 데이터 다시 받아옴
+
+                document.getElementById("loginId").textContent = data.loginId;
+                document.getElementById("nameInput").value = data.name;
+                document.getElementById("emailInput").value = data.email;
+                document.getElementById("birthInput").value = data.birth ? data.birth : "";
+            })
+            .catch(err => {
+                alert("오류 발생: " + err.message);
+            });
+    }
+</script>
+
+</body>
+</html>

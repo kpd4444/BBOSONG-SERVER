@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>회원 전체 조회</title>
+</head>
+<body>
+<h1>회원 전체 조회</h1>
+
+<button onclick="loadMembers()">조회하기</button>
+
+<table border="1" style="margin-top:20px;">
+    <thead>
+    <tr>
+        <th>ID</th>
+        <th>로그인 ID</th>
+        <th>이름</th>
+        <th>이메일</th>
+    </tr>
+    </thead>
+    <tbody id="memberTable"></tbody>
+</table>
+
+<script>
+    async function loadMembers() {
+
+        const token = localStorage.getItem("token"); // 🔥 로그인에서 저장한 토큰 불러오기
+
+        if (!token) {
+            alert("로그인 후 다시 시도하세요!");
+            return;
+        }
+
+        const response = await fetch("http://localhost:8080/member/all", {
+            method: "GET",
+            headers: {
+                "Authorization": "Bearer " + token,   // 🔥 토큰을 Header에 추가
+                "Content-Type": "application/json"
+            }
+        });
+
+        if (response.status === 403) {
+            alert("권한이 없습니다. 다시 로그인하세요.");
+            return;
+        }
+
+        const result = await response.json();
+        const list = result.data;
+
+        const tbody = document.getElementById("memberTable");
+        tbody.innerHTML = "";
+
+        list.forEach(m => {
+            const row = `
+                <tr>
+                  <td>${m.id}</td>
+                  <td>${m.loginId}</td>
+                  <td>${m.name}</td>
+                  <td>${m.email}</td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+        });
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>뽀송이 로그인</title>
+    <style>
+        /* 디자인은 기존과 동일하게 깔끔한 스타일 유지 */
+        body {
+            font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+            background: #f5f5ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 32px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 360px;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-top: 0;
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            box-sizing: border-box;
+            margin-bottom: 16px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            border-color: #4b6bff;
+            outline: none;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            background: #4b6bff;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #3a57e8;
+        }
+
+        button:disabled {
+            background: #b4c0ff;
+            cursor: not-allowed;
+        }
+
+        .msg {
+            margin-top: 16px;
+            font-size: 14px;
+            text-align: center;
+            min-height: 20px;
+        }
+
+        .msg.error { color: #e53935; }
+        .msg.success { color: #1e8e3e; }
+
+        /* 디버깅용 토큰 박스 (필요 없으면 style="display:none" 처리 가능) */
+        .debug-box {
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #888;
+        }
+        .debug-box textarea {
+            width: 100%;
+            height: 60px;
+            font-size: 11px;
+            margin-top: 5px;
+            color: #aaa;
+            border: 1px solid #eee;
+            resize: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🧼 뽀송이 로그인</h2>
+
+    <form id="loginForm">
+        <label for="loginId">아이디</label>
+        <input type="text" id="loginId" name="loginId" placeholder="아이디를 입력하세요" required>
+
+        <label for="password">비밀번호</label>
+        <input type="password" id="password" name="password" placeholder="비밀번호를 입력하세요" required>
+
+        <button type="submit" id="loginBtn">로그인 하기</button>
+    </form>
+
+    <div id="message" class="msg"></div>
+
+    <div class="debug-box">
+        <div>발급된 토큰 (자동 저장됨):</div>
+        <textarea id="tokenArea" readonly></textarea>
+    </div>
+</div>
+
+<script>
+    const form = document.getElementById("loginForm");
+    const loginBtn = document.getElementById("loginBtn");
+    const messageDiv = document.getElementById("message");
+    const tokenArea = document.getElementById("tokenArea");
+
+    form.addEventListener("submit", function (e) {
+        e.preventDefault(); // 폼의 기본 새로고침 방지
+
+        const loginId = document.getElementById("loginId").value.trim();
+        const password = document.getElementById("password").value.trim();
+
+        if (!loginId || !password) {
+            showMessage("아이디와 비밀번호를 모두 입력해주세요.", true);
+            return;
+        }
+
+        // 로딩 상태 시작
+        loginBtn.disabled = true;
+        loginBtn.textContent = "로그인 중...";
+        showMessage("");
+
+        fetch("/member/login", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                loginId: loginId,
+                password: password
+            })
+        })
+            .then(async (res) => {
+                const text = await res.text(); // 응답을 텍스트로 먼저 받음
+
+                if (!res.ok) {
+                    throw new Error(text || "로그인 실패");
+                }
+
+                // 1. 토큰 추출 (JSON 형식이든 단순 문자열이든 처리)
+                let token;
+                try {
+                    const json = JSON.parse(text);
+                    token = json.token || text; // {"token": "..."} 형태라면 .token 사용
+                } catch (e) {
+                    token = text; // 그냥 문자열이면 그대로 사용
+                }
+
+                if (!token) {
+                    throw new Error("서버에서 토큰을 받지 못했습니다.");
+                }
+
+                // 2. 화면에 토큰 표시 (디버깅용)
+                tokenArea.value = token;
+
+                // 3. 로컬 스토리지에 토큰 저장 (핵심!)
+                localStorage.setItem("token", token);
+
+                // 4. 성공 메시지 및 페이지 이동
+                showMessage("로그인 성공! 채팅방으로 이동합니다...", false, true);
+
+                setTimeout(() => {
+                    // 채팅 페이지로 이동
+                    window.location.href = "/chat.html";
+                }, 1000); // 사용자가 성공 메시지를 볼 수 있게 1초 뒤 이동
+            })
+            .catch((err) => {
+                console.error(err);
+                showMessage("로그인 실패: " + checkErrorMsg(err.message), true);
+                tokenArea.value = "";
+
+                // 버튼 상태 복구
+                loginBtn.disabled = false;
+                loginBtn.textContent = "로그인 하기";
+            });
+    });
+
+    // 에러 메시지 다듬기 함수
+    function checkErrorMsg(msg) {
+        if(msg.includes("Bad credentials") || msg.includes("401")) {
+            return "아이디 또는 비밀번호가 일치하지 않습니다.";
+        }
+        return msg;
+    }
+
+    // 메시지 표시 함수
+    function showMessage(msg, isError = false, isSuccess = false) {
+        messageDiv.textContent = msg;
+        messageDiv.className = "msg"; // 클래스 초기화
+
+        if (isError) {
+            messageDiv.classList.add("error");
+        } else if (isSuccess) {
+            messageDiv.classList.add("success");
+        }
+    }
+</script>
+
+</body>
+</html>

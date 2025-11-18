@@ -54,6 +54,13 @@
     const err = document.getElementById('err');
     let conversationId = null;
 
+    // 🔥 로그인 토큰 검사
+    const token = localStorage.getItem("posong_jwt");
+    if (!token) {
+        alert("로그인이 필요합니다.");
+        window.location.href = "/login.html";
+    }
+
     function append(role, content, imgUrl){
         const row = document.createElement('div');
         row.className = 'row ' + (role === 'user' ? 'user' : 'bot');
@@ -72,7 +79,14 @@
 
     async function ensureStarted(){
         if (conversationId) return;
-        const res = await fetch('/api/chat/start', {method:'POST'}); // 동일 출처 상대경로
+
+        const res = await fetch('/api/chat/start', {
+            method:'POST',
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
+        });
+
         if(!res.ok) throw new Error('start HTTP '+res.status);
         const json = await res.json();
         conversationId = json.conversationId;
@@ -104,13 +118,19 @@
         b.textContent = '생각중…';
         thinking.appendChild(b);
         msgs.appendChild(thinking);
-        msgs.scrollTop = msgs.scrollHeight;
 
+        msgs.scrollTop = msgs.scrollHeight;
         send.disabled = true;
 
         try{
-            const res = await fetch('/api/chat/send', {method:'POST', body: fd});
+            const res = await fetch('/api/chat/send', {
+                method:'POST',
+                headers: { "Authorization": `Bearer ${token}` },
+                body: fd
+            });
+
             if (!res.ok) throw new Error('send HTTP '+res.status);
+
             const json = await res.json();
             if (thinking.isConnected) msgs.removeChild(thinking);
             append('bot', json.assistantMessage);
@@ -124,7 +144,6 @@
         }
     }
 
-    // 이벤트
     send.addEventListener('click', sendMsg);
     text.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
