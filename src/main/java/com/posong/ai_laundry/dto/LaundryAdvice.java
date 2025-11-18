@@ -13,22 +13,30 @@ import java.util.List;
 @Builder
 public class LaundryAdvice {
 
+    @JsonProperty("카테고리")
+    @NotBlank
+    private String category;        // 예: 상의, 아우터, 하의…
+
+    @JsonProperty("소분류")
+    @NotBlank
+    private String subcategory;     // 예: 니트, 코트, 셔츠…
+
     @JsonProperty("소재")
     @NotBlank
-    private String material;          // e.g., "면 100%", "울 혼방"
+    private String material;
 
     @JsonProperty("색상")
     @NotBlank
-    private String color;             // e.g., "화이트", "차콜 그레이"
+    private String color;
 
     @JsonProperty("세탁방법")
     @NotBlank
-    private String washingMethod;     // 온도/세제/코스/건조 요약
+    private String washingMethod;
 
     @JsonProperty("주의사항")
     @NotBlank
-    private String cautions;          // 건조기 금지, 뒤집어 세탁망 등
+    private String cautions;
 
     @JsonProperty("권장심볼")
-    private List<String> recommendedSymbols; // 예: ["DoNotBleach","DryFlat"]
+    private List<String> recommendedSymbols;
 }

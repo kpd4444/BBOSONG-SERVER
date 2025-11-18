@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8" />
+    <title>뽀송이 세탁소 지도</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style>
+        html, body { height: 100%; margin: 0; }
+        #map { height: 100dvh; min-height: 100vh; }
+        #searchBox{
+            position:fixed; top:12px; left:50%; transform:translateX(-50%);
+            background:#fff; padding:8px 12px; border-radius:12px;
+            box-shadow:0 2px 8px rgba(0,0,0,.15); z-index:5; display:flex; gap:8px;
+        }
+        #keyword{ border:0; outline:0; font-size:14px; width:200px; }
+        button{ border:0; background:#3B82F6; color:#fff; border-radius:10px; padding:6px 10px; font-weight:700; cursor:pointer; }
+
+        /* 하단 상세 카드 */
+        #placeCard{
+            position:fixed; left:8px; right:8px; bottom:8px; z-index:6;
+            background:#fff; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.18);
+            padding:12px; display:none;
+        }
+        #placeCard .title{ font-size:16px; font-weight:700; margin-bottom:6px; }
+        #placeCard .row{ font-size:13px; color:#333; line-height:1.4; }
+        #placeCard .row + .row{ margin-top:4px; }
+        #placeCard .actions{ margin-top:10px; display:flex; gap:8px; }
+        #placeCard .btn{ padding:8px 10px; border-radius:8px; border:1px solid #e6e6e6; font-size:13px; background:#fafafa; cursor:pointer; }
+        #placeCard .btn.primary{ background:#3B82F6; color:#fff; border-color:#3B82F6; }
+    </style>
+
+    <!-- Kakao JS SDK -->
+    <script
+            src="https://t1.kakaocdn.net/kakao_js_sdk/2.1.0/kakao.min.js"
+            integrity="sha384-dpu02ieKC6NUeKFoGMOKz6102CLEWi9+5RQjWSV0ikYSFFd8M3Wp2reIcquJOemx"
+            crossorigin="anonymous">
+    </script>
+
+    <!-- Kakao Maps SDK -->
+    <script th:src="'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey='
+          + ${@environment.getProperty('kakao.js-key')}
+          + '&libraries=services'">
+    </script>
+</head>
+<body>
+<div id="searchBox">
+    <input id="keyword" type="text" placeholder="주변 세탁소 검색..." />
+    <button id="searchBtn">검색</button>
+</div>
+<div id="map"></div>
+
+<!-- 하단 상세 카드 -->
+<div id="placeCard">
+    <div class="title" id="pc_title"></div>
+    <div class="row" id="pc_addr"></div>
+    <div class="row" id="pc_road"></div>
+    <div class="row" id="pc_phone"></div>
+    <div class="actions">
+        <button class="btn" id="pc_close">닫기</button>
+        <a class="btn primary" id="pc_link" target="_blank" rel="noopener">카카오맵에서 보기</a>
+    </div>
+</div>
+
+<script th:inline="javascript">
+    const KAKAO_JS_KEY = /*[[${@environment.getProperty('kakao.js-key')}]]*/ '';
+
+    // --- 공통 로그 ---
+    const log = (...a) => console.debug('[MAP]', ...a);
+    const geolog = (...a) => console.debug('[GEO]', ...a);
+
+    window.addEventListener('load', () => {
+        if (window.Kakao) {
+            try { Kakao.init(KAKAO_JS_KEY); log('Kakao SDK initialized.'); }
+            catch(e){ console.error('Kakao.init 실패:', e); }
+        }
+        if (!window.kakao || !kakao.maps) { console.error('Kakao Maps SDK not loaded.'); return; }
+
+        kakao.maps.load(() => {
+            log('kakao.maps.load callback');
+
+            // 1) 기본 지도(서울 폴백 좌표)
+            const DEFAULT_LAT = 37.5665, DEFAULT_LNG = 126.9780;
+            const map = new kakao.maps.Map(document.getElementById('map'), {
+                center: new kakao.maps.LatLng(DEFAULT_LAT, DEFAULT_LNG),
+                level: 4
+            });
+
+            kakao.maps.event.addListener(map, 'tilesloaded', () => log('tiles loaded'));
+            log('init done');
+
+            // 상태
+            const markers = [];
+            let activeInfoWindow = null;
+            let activeMarker = null;
+            let myMarker = null;  // 현재 위치 마커
+
+            // 상세 카드 엘리먼트
+            const card = document.getElementById('placeCard');
+            const elTitle = document.getElementById('pc_title');
+            const elAddr  = document.getElementById('pc_addr');
+            const elRoad  = document.getElementById('pc_road');
+            const elPhone = document.getElementById('pc_phone');
+            const elLink  = document.getElementById('pc_link');
+            const elClose = document.getElementById('pc_close');
+
+            function hideCard(){ card.style.display = 'none'; }
+            function showCard(place){
+                elTitle.textContent = place.place_name || '(이름 없음)';
+                elAddr.textContent  = place.address_name ? `지번: ${place.address_name}` : '';
+                elRoad.textContent  = place.road_address_name ? `도로명: ${place.road_address_name}` : '';
+                elPhone.textContent = place.phone ? `전화: ${place.phone}` : '';
+                elLink.href = place.place_url || 'https://map.kakao.com';
+                card.style.display = 'block';
+            }
+            elClose.addEventListener('click', hideCard);
+
+            function clearMarkers(){
+                markers.forEach(m=>m.setMap(null));
+                markers.length = 0;
+                if (activeInfoWindow){ activeInfoWindow.close(); activeInfoWindow = null; }
+                activeMarker = null;
+                hideCard();
+            }
+
+            function addMarkerFor(place){
+                const pos = new kakao.maps.LatLng(place.y, place.x);
+                const marker = new kakao.maps.Marker({ map, position: pos });
+
+                const iw = new kakao.maps.InfoWindow({
+                    content: `<div style="padding:6px 10px; font-size:13px; font-weight:600;">${place.place_name || '상호명'}</div>`
+                });
+
+                kakao.maps.event.addListener(marker, 'click', () => {
+                    if (activeInfoWindow) activeInfoWindow.close();
+                    activeInfoWindow = iw;
+                    activeMarker = marker;
+                    iw.open(map, marker);
+                    map.setCenter(pos);
+                    showCard(place);
+                });
+
+                markers.push(marker);
+            }
+
+            function plotPlaces(docs){
+                clearMarkers();
+                (docs || []).forEach(addMarkerFor);
+                if ((docs || []).length){
+                    const p = docs[0];
+                    map.setCenter(new kakao.maps.LatLng(p.y, p.x));
+                }
+            }
+
+            // 2) 서버 검색 (주변 반경)
+            function searchNearby(keyword, lat, lng, radius=2000){
+                const url = `/api/map/laundry?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}`;
+                fetch(url)
+                    .then(r=>{ if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+                    .then(data=>{
+                        const docs = data.documents || [];
+                        log(`fetched ${docs.length} places`);
+                        plotPlaces(docs);
+                    })
+                    .catch(err=>{
+                        console.error('서버 호출 실패:', err);
+                        alert('서버 호출에 실패했습니다. 서버 로그를 확인하세요.');
+                    });
+            }
+
+            // 3) 현재 위치 표시용 마커
+            function setMyMarker(lat, lng){
+                const pos = new kakao.maps.LatLng(lat, lng);
+                if (!myMarker){
+                    myMarker = new kakao.maps.Marker({
+                        map,
+                        position: pos,
+                        // 필요하면 사용자 지정 아이콘 추가 가능
+                    });
+                } else {
+                    myMarker.setPosition(pos);
+                }
+            }
+
+            // 4) 지오로케이션 안정화: watchPosition + 최종 타임아웃 + 폴백
+            function getCurrentPositionWithFallback(centerTo, fallbackToDefault){
+                let settled = false;
+                let watchId = null;
+
+                const settle = (fn) => {
+                    if (settled) return;
+                    settled = true;
+                    if (watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId = null; }
+                    fn && fn();
+                };
+
+                const onSuccess = (pos) => {
+                    settle(() => {
+                        const { latitude:lat, longitude:lng, accuracy } = pos.coords;
+                        geolog('success', lat, lng, 'acc=', accuracy);
+                        centerTo(lat, lng);
+                    });
+                };
+                const onError = (err) => {
+                    geolog('error', err.code, err.message);
+                    // 에러가 와도 최종 타임아웃까지 대기 (아래 setTimeout)
+                };
+
+                if (!navigator.geolocation){
+                    geolog('unsupported → fallback');
+                    return fallbackToDefault();
+                }
+
+                watchId = navigator.geolocation.watchPosition(
+                    onSuccess,
+                    onError,
+                    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 } // WebView 특성상 넉넉히
+                );
+
+                // 최종 타임아웃(15s)
+                setTimeout(() => {
+                    if (settled) return;
+                    geolog('timeout → fallback to default');
+                    settle(fallbackToDefault);
+                }, 15000);
+            }
+
+            // 5) 초기 로드: 내 위치 → 주변 세탁소 검색
+            function loadMyLocation(){
+                const centerTo = (lat, lng) => {
+                    setMyMarker(lat, lng);
+                    map.setCenter(new kakao.maps.LatLng(lat, lng));
+                    map.setLevel(4);
+                    searchNearby('세탁소', lat, lng);
+                };
+                const fallback = () => {
+                    map.setCenter(new kakao.maps.LatLng(DEFAULT_LAT, DEFAULT_LNG));
+                    searchNearby('세탁소', DEFAULT_LAT, DEFAULT_LNG);
+                };
+                getCurrentPositionWithFallback(centerTo, fallback);
+            }
+
+            // 6) 검색 버튼: 현 위치 기준 검색(실패 시 서울)
+            document.getElementById('searchBtn').addEventListener('click', () => {
+                const kw = (document.getElementById('keyword').value || '').trim() || '세탁소';
+                const centerTo = (lat, lng) => searchNearby(kw, lat, lng);
+                const fallback  = () => searchNearby(kw, DEFAULT_LAT, DEFAULT_LNG);
+                getCurrentPositionWithFallback(centerTo, fallback);
+            });
+
+            // 지도 빈 곳 클릭 시 카드/말풍선 닫기
+            kakao.maps.event.addListener(map, 'click', () => {
+                if (activeInfoWindow){ activeInfoWindow.close(); activeInfoWindow = null; }
+                activeMarker = null;
+                hideCard();
+            });
+
+            // 시작
+            loadMyLocation();
+        });
+    });
+</script>
+</body>
+</html>
