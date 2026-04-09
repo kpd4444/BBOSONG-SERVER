@@ -1,5 +1,6 @@
 package com.posong.ai_laundry.security;
 
+import com.posong.ai_laundry.config.JwtProperties;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Component;
@@ -10,11 +11,16 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    private final String SECRET_KEY = "ThisIsASecretKeyForJwtTokenAndShouldBeLongEnough12345";
+    private final JwtProperties jwtProperties;
+    
     private final long EXPIRATION_TIME = 1000 * 60 * 60 * 24; // 1일
 
+    public JwtUtil(JwtProperties jwtProperties) {
+        this.jwtProperties = jwtProperties;
+    }
+
     private Key getSigningKey() {
-        return Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
+        return Keys.hmacShaKeyFor(jwtProperties.secret().getBytes());
     }
 
     // -----------------------------

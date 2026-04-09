@@ -55,7 +55,7 @@
     let conversationId = null;
 
     // 🔥 로그인 토큰 검사
-    const token = localStorage.getItem("posong_jwt");
+    const token = localStorage.getItem("token");
     if (!token) {
         alert("로그인이 필요합니다.");
         window.location.href = "/login.html";
@@ -89,7 +89,7 @@
 
         if(!res.ok) throw new Error('start HTTP '+res.status);
         const json = await res.json();
-        conversationId = json.conversationId;
+        conversationId = json.data.conversationId;
     }
 
     async function sendMsg(){
@@ -133,7 +133,7 @@
 
             const json = await res.json();
             if (thinking.isConnected) msgs.removeChild(thinking);
-            append('bot', json.assistantMessage);
+            append('bot', json.data.assistantMessage);
         }catch(e){
             if (thinking.isConnected) msgs.removeChild(thinking);
             append('bot', '전송 실패. 서버 실행/CORS 확인');

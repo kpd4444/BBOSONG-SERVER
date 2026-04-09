@@ -93,10 +93,10 @@
     let markers = [];
 
     function showCard(place) {
-        document.getElementById('placeName').textContent = place.place_name;
-        document.getElementById('address').textContent = place.road_address_name || place.address_name;
+        document.getElementById('placeName').textContent = place.name;
+        document.getElementById('address').textContent = place.roadAddress || place.address;
         document.getElementById('phone').textContent = place.phone ? `📞 ${place.phone}` : "전화번호 없음";
-        document.getElementById('link').href = place.place_url;
+        document.getElementById('link').href = place.placeUrl;
         document.getElementById('card').style.display = 'block';
     }
 
@@ -107,23 +107,23 @@
 
     function searchNearby(keyword, lat, lon) {
         fetch(`http://localhost:8080/api/places/search?query=${encodeURIComponent(keyword)}&x=${lon}&y=${lat}&radius=1500`)
-            .then(res => res.text())           // ✅ 서버가 JSON 문자열을 반환하므로 text로 읽기
-            .then(text => {
-                const data = JSON.parse(text);   // ✅ 직접 파싱
+            .then(res => res.json())
+            .then(response => {
+                const data = response.data;
                 clearMarkers();
-                data.documents.forEach(place => {
+                data.places.forEach(place => {
                     const marker = new kakao.maps.Marker({
                         map: map,
-                        position: new kakao.maps.LatLng(place.y, place.x)
+                        position: new kakao.maps.LatLng(place.latitude, place.longitude)
                     });
                     markers.push(marker);
                     kakao.maps.event.addListener(marker, 'click', () => {
-                        console.log("클릭됨:", place.place_name);
+                        console.log("클릭됨:", place.name);
                         showCard(place);
                     });
                 });
-                if (data.documents.length > 0) {
-                    map.setCenter(new kakao.maps.LatLng(data.documents[0].y, data.documents[0].x));
+                if (data.places.length > 0) {
+                    map.setCenter(new kakao.maps.LatLng(data.places[0].latitude, data.places[0].longitude));
                 }
             })
             .catch(err => {

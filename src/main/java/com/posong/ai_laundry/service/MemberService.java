@@ -2,40 +2,48 @@ package com.posong.ai_laundry.service;
 
 
 import com.posong.ai_laundry.dto.*;
+import com.posong.ai_laundry.global.CustomException;
+import com.posong.ai_laundry.global.ErrorCode;
 import com.posong.ai_laundry.member.Member;
 import com.posong.ai_laundry.member.MemberRepository;
 import com.posong.ai_laundry.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class MemberService {
 
     private final JwtUtil jwtUtil;
     private final MemberRepository memberRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
 
     // ----------------------
     // 회원가입
     // ----------------------
+    @Transactional
     public void signup(MemberSignupRequest req) {
 
         if (memberRepository.existsByLoginId(req.getLoginId())) {
-            throw new RuntimeException("이미 존재하는 아이디입니다.");
+            throw new CustomException(ErrorCode.DUPLICATE_LOGIN_ID);
         }
 
         if (memberRepository.existsByEmail(req.getEmail())) {
-            throw new RuntimeException("이미 존재하는 이메일입니다.");
+            throw new CustomException(ErrorCode.DUPLICATE_EMAIL);
         }
 
         Member member = new Member();
         member.setLoginId(req.getLoginId());
         member.setEmail(req.getEmail());
         member.setName(req.getName());
-        member.setPassword(req.getPassword());
+        // 비밀번호 암호화 저장
+        member.setPassword(passwordEncoder.encode(req.getPassword()));
 
 
         memberRepository.save(member);
@@ -44,16 +52,18 @@ public class MemberService {
     // ----------------------
     // 로그인 (토큰 발급)
     // ----------------------
+    @Transactional
     public MemberLoginResponse login(MemberLoginRequest req) {
 
         Member member = memberRepository.findByLoginId(req.getLoginId())
-                .orElseThrow(() -> new RuntimeException("아이디 또는 비밀번호가 잘못되었습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.INVALID_CREDENTIALS));
 
-        if (!member.getPassword().equals(req.getPassword())) {
-            throw new RuntimeException("아이디 또는 비밀번호가 잘못되었습니다.");
+        // 암호화된 비밀번호 비교
+        if (!passwordEncoder.matches(req.getPassword(), member.getPassword())) {
+            throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
         }
 
-        // 🔥 JWT 발급
+        // JWT 발급
         String token = jwtUtil.generateToken(member.getLoginId());
 
         return new MemberLoginResponse(
@@ -68,7 +78,7 @@ public class MemberService {
     // ----------------------
     public Member findByLoginId(String loginId) {
         return memberRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new RuntimeException("회원이 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
     }
 
     // ----------------------
@@ -78,10 +88,10 @@ public class MemberService {
         return memberRepository.findAll();
     }
 
+    @Transactional
     public void updateMyPage(String loginId, MyPageUpdateRequest req) {
 
-        Member member = memberRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new RuntimeException("회원이 존재하지 않습니다."));
+        Member member = findByLoginId(loginId);
 
         // 수정 가능한 항목만 업데이트
         if (req.getName() != null && !req.getName().isBlank()) {
@@ -89,6 +99,9 @@ public class MemberService {
         }
 
         if (req.getEmail() != null && !req.getEmail().isBlank()) {
+            if (!req.getEmail().equals(member.getEmail()) && memberRepository.existsByEmail(req.getEmail())) {
+                throw new CustomException(ErrorCode.DUPLICATE_EMAIL);
+            }
             member.setEmail(req.getEmail());
         }
 
@@ -97,6 +110,41 @@ public class MemberService {
         }
 
         memberRepository.save(member);
+    }
+
+    public MemberAvailabilityResponse checkLoginIdAvailability(String loginId) {
+        return new MemberAvailabilityResponse(loginId, !memberRepository.existsByLoginId(loginId));
+    }
+
+    public MemberAvailabilityResponse checkEmailAvailability(String email) {
+        return new MemberAvailabilityResponse(email, !memberRepository.existsByEmail(email));
+    }
+
+    @Transactional
+    public void changePassword(String loginId, MemberPasswordChangeRequest req) {
+        Member member = findByLoginId(loginId);
+
+        if (!passwordEncoder.matches(req.getCurrentPassword(), member.getPassword())) {
+            throw new CustomException(ErrorCode.INVALID_PASSWORD);
+        }
+
+        if (passwordEncoder.matches(req.getNewPassword(), member.getPassword())) {
+            throw new CustomException(ErrorCode.SAME_AS_OLD_PASSWORD);
+        }
+
+        member.setPassword(passwordEncoder.encode(req.getNewPassword()));
+        memberRepository.save(member);
+    }
+
+    @Transactional
+    public void withdraw(String loginId, MemberWithdrawRequest req) {
+        Member member = findByLoginId(loginId);
+
+        if (!passwordEncoder.matches(req.getPassword(), member.getPassword())) {
+            throw new CustomException(ErrorCode.INVALID_PASSWORD);
+        }
+
+        memberRepository.delete(member);
     }
 
 }

@@ -34,9 +34,9 @@ public class SecurityConfig {
 
         http.authorizeHttpRequests(auth -> auth
                 .requestMatchers("/", "/index.html").permitAll()
-                .requestMatchers("/login.html", "/signup.html", "/chat.html", "/map.html", "/mypage.html", "/members.html").permitAll()
+                .requestMatchers("/login.html", "/signup.html", "/main.html", "/analyze.html", "/chat.html", "/map.html", "/mypage.html", "/members.html").permitAll()
                 .requestMatchers("/css/**", "/js/**", "/images/**").permitAll()
-                .requestMatchers("/member/login", "/member/signup").permitAll()
+                .requestMatchers("/member/login", "/member/signup", "/member/check-login-id", "/member/check-email").permitAll()
                 .anyRequest().authenticated()
         );
 

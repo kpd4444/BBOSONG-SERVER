@@ -164,11 +164,20 @@
         })
             .then(res => res.json())
             .then(result => {
+                if (!result.data) {
+                    throw new Error(result.message || "수정 실패");
+                }
                 alert("정보가 수정되었습니다!");
-
-                // 수정 후 화면 값을 최신화
-                const data = result.data;  // 수정된 데이터 다시 받아옴
-
+                return fetch("/member/mypage", {
+                    method: "GET",
+                    headers: {
+                        "Authorization": "Bearer " + token
+                    }
+                });
+            })
+            .then(res => res.json())
+            .then(result => {
+                const data = result.data;
                 document.getElementById("loginId").textContent = data.loginId;
                 document.getElementById("nameInput").value = data.name;
                 document.getElementById("emailInput").value = data.email;

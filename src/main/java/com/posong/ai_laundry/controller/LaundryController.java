@@ -2,7 +2,9 @@ package com.posong.ai_laundry.controller;
 
 
 import com.posong.ai_laundry.dto.LaundryAdvice;
+import com.posong.ai_laundry.global.ApiResponse;
 import com.posong.ai_laundry.service.LaundryAiService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
 import org.springframework.validation.annotation.Validated;
@@ -19,9 +21,9 @@ public class LaundryController {
 
     @PostMapping(value="/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<LaundryAdvice> analyze(@RequestPart("file") MultipartFile file) throws Exception {
+    public ResponseEntity<ApiResponse<LaundryAdvice>> analyze(@RequestPart("file") MultipartFile file) throws Exception {
         LaundryAdvice advice = laundryAiService.analyze(file);
-        return ResponseEntity.ok(advice);
+        return ResponseEntity.ok(ApiResponse.success(advice));
     }
 
     // 헬스체크/스모크

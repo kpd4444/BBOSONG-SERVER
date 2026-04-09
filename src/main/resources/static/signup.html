@@ -2,20 +2,96 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>회원가입</title>
+    <style>
+        body {
+            font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+            background: #f5f7ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            width: 360px;
+            background: white;
+            padding: 32px;
+            border-radius: 18px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.08);
+        }
+        h1 {
+            font-size: 24px;
+            margin: 0 0 24px;
+            text-align: center;
+        }
+        label {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 16px;
+            border: 1px solid #d9dfef;
+            border-radius: 10px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            border: 0;
+            background: #4b6bff;
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        #result {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .login-link {
+            margin-top: 16px;
+            text-align: center;
+        }
+        .login-link a {
+            color: #4b6bff;
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
 </head>
 <body>
-<h1>회원가입</h1>
+<div class="container">
+    <h1>회원가입</h1>
 
-<form id="signupForm">
-    <label>아이디: <input type="text" id="loginId"></label><br><br>
-    <label>이름: <input type="text" id="name"></label><br><br>
-    <label>이메일: <input type="text" id="email"></label><br><br>
-    <label>비밀번호: <input type="password" id="password"></label><br><br>
-    <button type="submit">회원가입</button>
-</form>
+    <form id="signupForm">
+        <label>아이디</label>
+        <input type="text" id="loginId">
 
-<p id="result"></p>
+        <label>이름</label>
+        <input type="text" id="name">
+
+        <label>이메일</label>
+        <input type="text" id="email">
+
+        <label>비밀번호</label>
+        <input type="password" id="password">
+
+        <button type="submit">회원가입</button>
+    </form>
+
+    <p id="result"></p>
+
+    <div class="login-link">
+        <a href="/login.html">로그인으로 돌아가기</a>
+    </div>
+</div>
 
 <script>
     document.getElementById("signupForm").addEventListener("submit", async function (e) {
@@ -28,15 +104,27 @@
             password: document.getElementById("password").value
         };
 
-        const response = await fetch("http://localhost:8080/member/signup", {
+        const response = await fetch("/member/signup", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(data)
         });
 
         const result = await response.json();
-        document.getElementById("result").innerText =
-            "응답: " + JSON.stringify(result, null, 2);
+        const resultEl = document.getElementById("result");
+
+        if (!response.ok) {
+            resultEl.innerText = result.message || "회원가입 실패";
+            resultEl.style.color = "#d32f2f";
+            return;
+        }
+
+        resultEl.innerText = "회원가입이 완료되었습니다. 로그인 화면으로 이동합니다.";
+        resultEl.style.color = "#1e8e3e";
+
+        setTimeout(() => {
+            window.location.href = "/login.html";
+        }, 1000);
     });
 </script>
 

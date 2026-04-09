@@ -2,27 +2,26 @@ package com.posong.ai_laundry.service;
 
 
 import com.posong.ai_laundry.dto.LaundryAdvice;
+import com.posong.ai_laundry.config.AiProperties;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-
-import org.springframework.util.MimeTypeUtils;
-
 import java.io.IOException;
-import java.io.UncheckedIOException;
-
-
 
 @Service
 public class LaundryAiService {
 
     private final ChatClient chatClient;
+    private final AiProperties aiProperties;
 
-    public LaundryAiService(ChatClient.Builder builder) {
+    public LaundryAiService(ChatClient.Builder builder, AiProperties aiProperties) {
         this.chatClient = builder.build();
+        this.aiProperties = aiProperties;
     }
 
     public LaundryAdvice analyze(MultipartFile file) throws IOException {
@@ -56,6 +55,10 @@ public class LaundryAiService {
         """;
 
         return chatClient.prompt()
+                .options(OpenAiChatOptions.builder()
+                        .model(aiProperties.model())
+                        .temperature(aiProperties.temperature())
+                        .build())
                 .system(system)
                 .user(u -> u
                         .text(user)

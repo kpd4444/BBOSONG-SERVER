@@ -1,28 +1,52 @@
 package com.posong.ai_laundry.service;
 
-import com.posong.ai_laundry.chat.ConversationStore; // ← 네 위치에 맞게 조정
-import com.posong.ai_laundry.dto.ChatMessageResponse; // ← 네 위치에 맞게 조정
+import com.posong.ai_laundry.chat.ChatMessage;
+import com.posong.ai_laundry.chat.ChatMessageRepository;
+import com.posong.ai_laundry.chat.ChatRoom;
+import com.posong.ai_laundry.chat.ChatRoomRepository;
+import com.posong.ai_laundry.config.AiProperties;
+import com.posong.ai_laundry.config.ChatProperties;
+import com.posong.ai_laundry.dto.ChatMessageResponse;
+import com.posong.ai_laundry.global.CustomException;
+import com.posong.ai_laundry.global.ErrorCode;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class ChatService {
 
-    private final ConversationStore store;
     private final ChatClient chatClient;
+    private final ChatRoomRepository chatRoomRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final AiProperties aiProperties;
+    private final ChatProperties chatProperties;
 
-    public ChatService(ConversationStore store, ChatClient.Builder builder) {
-        this.store = store;
+    public ChatService(
+            ChatClient.Builder builder,
+            ChatRoomRepository chatRoomRepository,
+            ChatMessageRepository chatMessageRepository,
+            AiProperties aiProperties,
+            ChatProperties chatProperties
+    ) {
         this.chatClient = builder.build(); // ✅ Builder로 실제 클라이언트 생성
+        this.chatRoomRepository = chatRoomRepository;
+        this.chatMessageRepository = chatMessageRepository;
+        this.aiProperties = aiProperties;
+        this.chatProperties = chatProperties;
     }
 
     private static final String SYSTEM = """
@@ -33,31 +57,24 @@ public class ChatService {
         이전 대화와 첨부 이미지를 모두 문맥에 반영합니다.
         """;
 
+    @Transactional
     public ChatMessageResponse sendMessage(String conversationId, String userText, MultipartFile file) {
-        if (conversationId == null || conversationId.isBlank()) {
-            conversationId = store.start();
-        }
+        ChatRoom chatRoom = resolveChatRoom(conversationId);
+        String normalizedUserText = userText == null ? "" : userText;
 
-        // 간단한 히스토리 문자열
-        List<String> prev = store.get(conversationId);
-        StringBuilder history = new StringBuilder();
-        for (String line : prev) history.append(line).append("\n");
-
-        store.append(conversationId, "user", userText == null ? "" : userText);
+        String history = buildHistory(chatRoom);
+        saveMessage(chatRoom, "user", normalizedUserText, file != null && !file.isEmpty());
 
         var options = OpenAiChatOptions.builder()
-                .model("gpt-5")     // ✅ 모델 지정
-                .temperature(1.0)   // ✅ gpt-5는 1만 허용
+                .model(aiProperties.model())
+                .temperature(aiProperties.temperature())
                 .build();
 
         var call = chatClient.prompt()
-                .options(OpenAiChatOptions.builder()
-                        .model("gpt-5")
-                        .temperature(1.0)
-                        .build())
+                .options(options)
                 .system(SYSTEM)
                 .user(u -> {
-                    u.text("이전 대화:\n" + history + "\n---\n사용자 메시지: " + (userText == null ? "" : userText));
+                    u.text("이전 대화:\n" + history + "\n---\n사용자 메시지: " + normalizedUserText);
                     if (file != null && !file.isEmpty()) {
                         try {
                             String ct = (file.getContentType() != null) ? file.getContentType() : "image/jpeg";
@@ -78,15 +95,69 @@ public class ChatService {
                 .call();
 
         String assistant = call.content();
-        store.append(conversationId, "assistant", assistant);
+        saveMessage(chatRoom, "assistant", assistant, false);
 
         return ChatMessageResponse.builder()
-                .conversationId(conversationId)
+                .conversationId(chatRoom.getConversationId())
                 .assistantMessage(assistant)
                 .build();
     }
 
+    @Transactional
     public String startConversation() {
-        return store.start();
+        ChatRoom chatRoom = new ChatRoom();
+        chatRoom.setConversationId(UUID.randomUUID().toString());
+        chatRoom.setLastMessageAt(LocalDateTime.now());
+        return chatRoomRepository.save(chatRoom).getConversationId();
+    }
+
+    private ChatRoom resolveChatRoom(String conversationId) {
+        if (conversationId == null || conversationId.isBlank()) {
+            ChatRoom chatRoom = new ChatRoom();
+            chatRoom.setConversationId(UUID.randomUUID().toString());
+            chatRoom.setLastMessageAt(LocalDateTime.now());
+            return chatRoomRepository.save(chatRoom);
+        }
+
+        return chatRoomRepository.findByConversationId(conversationId)
+                .orElseThrow(() -> new CustomException(ErrorCode.CHAT_CONVERSATION_NOT_FOUND));
+    }
+
+    private String buildHistory(ChatRoom chatRoom) {
+        List<ChatMessage> recentMessages = chatMessageRepository.findByChatRoomOrderByCreatedAtDesc(
+                chatRoom,
+                PageRequest.of(0, chatProperties.historyLimit())
+        );
+        Collections.reverse(recentMessages);
+
+        StringBuilder history = new StringBuilder();
+        for (ChatMessage message : recentMessages) {
+            history.append(message.getRole())
+                    .append(":")
+                    .append(message.getContent())
+                    .append("\n");
+        }
+        return history.toString();
+    }
+
+    private void saveMessage(ChatRoom chatRoom, String role, String content, boolean hasAttachment) {
+        ChatMessage message = new ChatMessage();
+        message.setChatRoom(chatRoom);
+        message.setRole(role);
+        message.setContent(content);
+        message.setHasAttachment(hasAttachment);
+        chatMessageRepository.save(message);
+        enforceRetention(chatRoom);
+
+        chatRoom.setLastMessageAt(LocalDateTime.now());
+        chatRoomRepository.save(chatRoom);
+    }
+
+    private void enforceRetention(ChatRoom chatRoom) {
+        long retentionLimit = chatProperties.retentionLimit();
+        long totalMessages = chatMessageRepository.countByChatRoom(chatRoom);
+        if (totalMessages > retentionLimit) {
+            chatMessageRepository.deleteMessagesExceedingRetention(chatRoom.getId(), retentionLimit);
+        }
     }
 }

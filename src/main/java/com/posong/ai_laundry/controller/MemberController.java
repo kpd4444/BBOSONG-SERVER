@@ -5,6 +5,7 @@ import com.posong.ai_laundry.global.ApiResponse;
 import com.posong.ai_laundry.member.Member;
 import com.posong.ai_laundry.security.CustomUserDetails;
 import com.posong.ai_laundry.service.MemberService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,18 +24,27 @@ public class MemberController {
     // 1. 회원가입
     // -----------------------------
     @PostMapping("/signup")
-    public ResponseEntity<?> signup(@RequestBody MemberSignupRequest req) {
+    public ResponseEntity<ApiResponse<String>> signup(@Valid @RequestBody MemberSignupRequest req) {
         memberService.signup(req);
-        return ResponseEntity.ok("회원가입 성공");
+        return ResponseEntity.ok(ApiResponse.success("회원가입 성공"));
     }
 
     // -----------------------------
     // 2. 로그인 (토큰 발급)
     // -----------------------------
     @PostMapping("/login")
-    public ResponseEntity<MemberLoginResponse> login(@RequestBody MemberLoginRequest req) {
+    public ResponseEntity<ApiResponse<MemberLoginResponse>> login(@Valid @RequestBody MemberLoginRequest req) {
+        return ResponseEntity.ok(ApiResponse.success(memberService.login(req)));
+    }
 
-        return ResponseEntity.ok(memberService.login(req));
+    @GetMapping("/check-login-id")
+    public ResponseEntity<ApiResponse<MemberAvailabilityResponse>> checkLoginId(@RequestParam String loginId) {
+        return ResponseEntity.ok(ApiResponse.success(memberService.checkLoginIdAvailability(loginId)));
+    }
+
+    @GetMapping("/check-email")
+    public ResponseEntity<ApiResponse<MemberAvailabilityResponse>> checkEmail(@RequestParam String email) {
+        return ResponseEntity.ok(ApiResponse.success(memberService.checkEmailAvailability(email)));
     }
 
     // -----------------------------
@@ -61,14 +71,32 @@ public class MemberController {
         );
     }
     @PatchMapping("/mypage")
-    public ResponseEntity<ApiResponse<?>> updateMyPage(
+    public ResponseEntity<ApiResponse<String>> updateMyPage(
             @AuthenticationPrincipal CustomUserDetails user,
-            @RequestBody MyPageUpdateRequest req
+            @Valid @RequestBody MyPageUpdateRequest req
     ) {
 
         memberService.updateMyPage(user.getUsername(), req);
 
         return ResponseEntity.ok(ApiResponse.success("수정 완료"));
+    }
+
+    @PatchMapping("/password")
+    public ResponseEntity<ApiResponse<String>> changePassword(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @Valid @RequestBody MemberPasswordChangeRequest req
+    ) {
+        memberService.changePassword(user.getUsername(), req);
+        return ResponseEntity.ok(ApiResponse.success("비밀번호 변경 완료"));
+    }
+
+    @DeleteMapping
+    public ResponseEntity<ApiResponse<String>> withdraw(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @Valid @RequestBody MemberWithdrawRequest req
+    ) {
+        memberService.withdraw(user.getUsername(), req);
+        return ResponseEntity.ok(ApiResponse.success("회원 탈퇴 완료"));
     }
 
 }
